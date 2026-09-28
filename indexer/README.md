@@ -67,6 +67,10 @@ contract `VERSION` that changes event shapes is a coordinated indexer
 release, not a live `version()` dispatch. Both decisions, and what happens
 to already-ingested rows, are in [`docs/INDEXER_DESIGN.md`](../docs/INDEXER_DESIGN.md).
 
+For the database itself — every table, its columns, and how the API's
+derived views (a task's status, a keeper's balance, ...) are folded from
+the raw `events` table — see [`docs/INDEXER_SCHEMA.md`](../docs/INDEXER_SCHEMA.md).
+
 Ingestion polls the RPC's `getEvents`, the mechanism the keeper-bot already
 uses. Backfill and steady-state polling share one parsing path
 (`ingest::Ingestor::ingest_batch`); the only difference between them is the

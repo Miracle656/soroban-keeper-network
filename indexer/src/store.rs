@@ -511,4 +511,83 @@ mod tests {
         store.save_checkpoint(advanced).await.expect("save");
         assert_eq!(store.checkpoint().await.expect("read"), Some(advanced));
     }
+
+    #[tokio::test]
+    async fn schema_matches_docs_indexer_schema_md() {
+        // Introspects a freshly migrated database rather than trusting the
+        // migration files match what docs/INDEXER_SCHEMA.md describes -- if
+        // a future migration adds, removes, or renames a table or column
+        // without updating that doc, this fails instead of the two silently
+        // drifting apart (issue 0372's acceptance criterion).
+        let store = store().await;
+
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '_sqlx_migrations'
+             ORDER BY name",
+        )
+        .fetch_all(store.pool())
+        .await
+        .expect("listing tables");
+
+        assert_eq!(
+            tables,
+            vec![
+                "api_keys",
+                "events",
+                "ingest_checkpoint",
+                "ledger_fingerprints"
+            ],
+            "docs/INDEXER_SCHEMA.md documents exactly these tables; update both together",
+        );
+
+        for (table, expected_columns) in [
+            (
+                "events",
+                &[
+                    "cursor",
+                    "ledger",
+                    "ledger_close_time",
+                    "tx_hash",
+                    "event_index",
+                    "event_type",
+                    "task_id",
+                    "owner_address",
+                    "keeper_address",
+                    "payload",
+                ][..],
+            ),
+            (
+                "ingest_checkpoint",
+                &["id", "last_ledger", "backfill_complete", "updated_at"][..],
+            ),
+            (
+                "ledger_fingerprints",
+                &["ledger", "event_count", "digest", "first_seen_at"][..],
+            ),
+            (
+                "api_keys",
+                &[
+                    "key_id",
+                    "label",
+                    "secret_hash",
+                    "rate_limit_per_minute",
+                    "created_at",
+                    "revoked_at",
+                ][..],
+            ),
+        ] {
+            let columns: Vec<String> = sqlx::query_scalar(&format!(
+                "SELECT name FROM pragma_table_info('{table}') ORDER BY cid"
+            ))
+            .fetch_all(store.pool())
+            .await
+            .unwrap_or_else(|error| panic!("listing columns for {table}: {error}"));
+
+            assert_eq!(
+                columns, expected_columns,
+                "docs/INDEXER_SCHEMA.md's `{table}` column list is out of date",
+            );
+        }
+    }
 }
