@@ -212,13 +212,26 @@ In accordance with Issue **#412**:
 
 #### Benchmark Harness
 The benchmark harness in `examples/keeper-bot-v2/benchmark/` tests Keeper Bot v1 (sequential) against Keeper Bot v2 (concurrent + prioritized) under strictly identical simulated conditions:
-* **Workload**: 20 candidate tasks with heterogeneous reward distributions (10,000 stroops to 5,000,000 stroops).
-* **Simulated Network Latency**: Controlled 25ms delay per RPC simulation, claim, and execution call.
-* **Contention**: 30% phantom competitor claim rate simulating real-world race conditions.
+* **Workload**: 25 candidate tasks with heterogeneous reward distributions (50,000 to 1,500,000 stroops).
+* **Simulated Network Latency**: Controlled 15ms delay per RPC simulation, claim, and execution call.
+* **Contention**: 24% claim race rate (6 of 25 tasks) simulating mid-round claims by competing keeper bots.
+* **v2 Concurrency**: 4 workers.
+* **Spend Ceiling**: 5,000,000 stroops, enforced independently of task margins.
 * **Metrics Recorded**:
   * Round Latency (ms)
   * Tasks Won / Executed
   * Net Profit Realized (stroops)
   * Error Counts & Lost Race Classification
 
-The committed report is preserved in `examples/keeper-bot-v2/benchmark/REPORT.md`.
+#### Results (epic E15's evidence of value delivered)
+The committed report (`examples/keeper-bot-v2/benchmark/REPORT.md`) recorded:
+
+| Dimension | v1 (Sequential) | v2 (Concurrent & Prioritized) | Delta |
+|---|---|---|---|
+| Round Latency | 753 ms | 210 ms | **-72.1%** |
+| Tasks Won | 19 | 19 | Same (contention bounded) |
+| Net Profit | 15,960,000 stroops | 15,960,000 stroops | +0 |
+| Reported Errors | 6 (false positives) | 0 | **-100%** |
+| Lost Races Handled | 0 (counted as failure) | 6 (`success-with-skip`) | Resilient continuation |
+
+The two headline results are the concurrency win (72.1% faster rounds, from overlapping RPC round trips across the worker pool rather than serializing them) and the observability fix (v1's 6 lost-claim-race false positives become 0 in v2, because a lost race is a normal competitive skip — see "Multi-Keeper Competition & Lost-Race Handling" above — not an error). Net profit and tasks won are identical, confirming v2's concurrency and spend-ceiling enforcement ("Hard Ceiling on Per-Round Resource Spend" above) do not trade correctness for speed.
