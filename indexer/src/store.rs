@@ -10,8 +10,20 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use std::str::FromStr;
 
+use crate::address::normalize_address;
 use crate::events::{EventPayload, EventType, IndexedEvent};
 use crate::state::{AdminConfig, KeeperSummary, TaskState};
+
+/// Every query path that filters on a caller-supplied address goes through
+/// this first (issue 0364), so a muxed (`M...`) address a caller pasted in
+/// still matches the plain `G...` form ingestion always stores. A string
+/// that fails to normalize (not a valid address at all) is passed through
+/// unchanged rather than turned into an error -- the existing behavior for
+/// a garbage filter/path segment is "matches nothing", which normalization
+/// failing does not need to change.
+fn normalized_or_as_given(address: &str) -> String {
+    normalize_address(address).unwrap_or_else(|_| address.to_string())
+}
 
 /// Handle to the event store.
 #[derive(Clone)]
@@ -117,6 +129,7 @@ impl Store {
         // Fetch one extra row to learn whether a further page exists without a
         // second COUNT query.
         let fetch = i64::from(limit) + 1;
+        let normalized_address = address.map(normalized_or_as_given);
 
         let rows = sqlx::query(
             "SELECT cursor, ledger, ledger_close_time, tx_hash, event_index, payload
@@ -129,7 +142,7 @@ impl Store {
         )
         .bind(after.unwrap_or(0))
         .bind(event_type.map(EventType::as_str))
-        .bind(address)
+        .bind(normalized_address)
         .bind(fetch)
         .fetch_all(&self.pool)
         .await
@@ -184,7 +197,7 @@ impl Store {
              WHERE owner_address = ? AND task_id IS NOT NULL
              ORDER BY task_id DESC",
         )
-        .bind(owner)
+        .bind(normalized_or_as_given(owner))
         .fetch_all(&self.pool)
         .await
         .context("reading tasks by owner")?;
@@ -202,7 +215,7 @@ impl Store {
              WHERE keeper_address = ? AND task_id IS NOT NULL
              ORDER BY task_id DESC",
         )
-        .bind(keeper)
+        .bind(normalized_or_as_given(keeper))
         .fetch_all(&self.pool)
         .await
         .context("reading tasks by keeper")?;
@@ -220,17 +233,18 @@ impl Store {
     /// debit `amount`, and the difference is what the contract's
     /// `keeper_balance` view reports once the indexer is caught up.
     pub async fn keeper_summary(&self, keeper: &str) -> Result<KeeperSummary> {
+        let keeper = normalized_or_as_given(keeper);
         let rows = sqlx::query(
             "SELECT cursor, ledger, ledger_close_time, tx_hash, event_index, payload
              FROM events WHERE keeper_address = ? ORDER BY cursor ASC",
         )
-        .bind(keeper)
+        .bind(&keeper)
         .fetch_all(&self.pool)
         .await
         .context("reading keeper events")?;
 
         let events: Vec<IndexedEvent> = rows.iter().map(row_to_event).collect::<Result<_>>()?;
-        Ok(KeeperSummary::fold(keeper, &events))
+        Ok(KeeperSummary::fold(&keeper, &events))
     }
 
     /// Current admin configuration, folded from the admin event history.
@@ -492,6 +506,66 @@ mod tests {
             .await
             .expect("page");
         assert_eq!(by_owner.events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_muxed_address_query_finds_events_stored_under_the_plain_account() {
+        // The end-to-end version of issue 0364's acceptance criterion:
+        // ingestion always stores the plain G... form (`decode_address` in
+        // rpc.rs can never itself see a muxed address -- see address.rs's
+        // module doc), but a caller querying by the *muxed* form of that
+        // same account must still find it, not silently see nothing.
+        const ACCOUNT: &str = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ";
+        const MUXED_ID_ZERO: &str =
+            "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK";
+
+        let store = store().await;
+        store
+            .insert_event(
+                11,
+                110,
+                "tx1",
+                0,
+                &EventPayload::TaskClaimed {
+                    task_id: 1,
+                    keeper: ACCOUNT.into(),
+                    claim_ledger: 11,
+                },
+            )
+            .await
+            .expect("insert");
+
+        let by_plain_account = store
+            .task_ids_by_keeper(ACCOUNT)
+            .await
+            .expect("query by plain account");
+        let by_muxed_account = store
+            .task_ids_by_keeper(MUXED_ID_ZERO)
+            .await
+            .expect("query by muxed account");
+
+        assert_eq!(by_plain_account, vec![1]);
+        assert_eq!(
+            by_plain_account, by_muxed_account,
+            "querying by the muxed form of the same account must find the same rows",
+        );
+
+        // Same guarantee through events_after's address filter.
+        let feed_by_muxed = store
+            .events_after(None, 10, None, Some(MUXED_ID_ZERO))
+            .await
+            .expect("page")
+            .events;
+        assert_eq!(feed_by_muxed.len(), 1);
+
+        // And through keeper_summary, whose returned `keeper` field should
+        // also be the canonical form, not whatever the caller happened to
+        // pass in.
+        let summary = store
+            .keeper_summary(MUXED_ID_ZERO)
+            .await
+            .expect("keeper summary by muxed account");
+        assert_eq!(summary.keeper, ACCOUNT);
     }
 
     #[tokio::test]
