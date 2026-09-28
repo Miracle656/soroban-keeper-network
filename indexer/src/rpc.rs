@@ -175,13 +175,22 @@ fn decode_symbol(b64: &str) -> Result<String> {
 }
 
 fn decode_address(addr: &ScAddress) -> String {
-    match addr {
+    // `stellar_strkey`'s encoders are already deterministic and canonical
+    // for a given set of raw bytes -- an `ScAddress` (unlike a caller-
+    // supplied query string) can never itself be a muxed address, since that
+    // XDR type has no muxed variant. Still routed through the shared
+    // `normalize_address` (issue 0364's acceptance criterion: one function
+    // used by every ingestion and query path, not just the query side where
+    // a real ambiguity exists) rather than calling `.to_string()` directly
+    // here and only there.
+    let raw = match addr {
         ScAddress::Account(account_id) => {
             let stellar_xdr::curr::PublicKey::PublicKeyTypeEd25519(key) = &account_id.0;
             stellar_strkey::ed25519::PublicKey(key.0).to_string()
         }
         ScAddress::Contract(hash) => stellar_strkey::Contract(hash.0).to_string(),
-    }
+    };
+    crate::address::normalize_address(&raw).unwrap_or(raw)
 }
 
 fn decode_scval(val: ScVal) -> Result<RawValue> {

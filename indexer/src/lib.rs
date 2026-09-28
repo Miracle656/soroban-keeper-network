@@ -28,6 +28,7 @@
 //! See `docs/INDEXER_DESIGN.md` for the architecture and
 //! `docs/INDEXER_DEPLOYMENT.md` for running one.
 
+pub mod address;
 pub mod api;
 pub mod backfill;
 pub mod cache;
