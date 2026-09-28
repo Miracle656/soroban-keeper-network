@@ -237,7 +237,6 @@ impl KeeperRegistry {
 
     pub fn withdraw_stake(e: Env, keeper: Address) -> Result<i128, KeeperError> {
         require_initialized(&e)?;
-        require_not_paused(&e)?;
         keeper.require_auth();
 
         let request_key = DataKey::UnbondRequest(keeper.clone());

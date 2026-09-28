@@ -79,10 +79,15 @@ impl KeeperRegistry {
     // |                    |             | liveness, not new exposure             |
     // | `expire_task`      | allowed     | permissionless fund recovery           |
     // | `withdraw_rewards` | allowed     | keeper pulling already-earned balance  |
+    // | `stake_deposit`    | BLOCKED     | opens new keeper exposure              |
+    // | `initiate_unbond`  | allowed     | keeper requesting stake return;        |
+    // |                    |             | no new exposure                        |
+    // | `withdraw_stake`   | allowed     | keeper pulling already-owned funds     |
+    // | `slash`            | allowed     | admin action; never gated              |
     // | read-only views    | allowed     | side-effect-free, never gated          |
     //
     // `set_fee_bps`/`set_min_reward`/`set_reputation_floor`/`transfer_admin`/
-    // `upgrade`/`sweep_fees` are admin-only (`require_admin`) and were never in
+    // `upgrade`/`sweep_fees`/`slash` are admin-only (`require_admin`) and were never in
     // scope for the pause gate at all — pausing doesn't restrict what the admin
     // itself can do.
 

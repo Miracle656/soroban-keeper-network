@@ -263,14 +263,15 @@ A **shared, permissionless, on-chain coordination layer** where:
 
 #### FR-7: Admin Controls
 - `pause`/`unpause` MUST gate `register_task`, `claim_task`, `execute_task`,
-  `increase_reward`, and `extend_deadline` — the first four open new escrow
-  or reward exposure, and `extend_deadline` can keep escrow locked in a
-  contract the admin has declared unsafe if left open.
-- `pause`/`unpause` MUST NOT gate `cancel_task`, `expire_task`, or
-  `withdraw_rewards` — these only let already-escrowed value flow back to
-  whoever already owns it, which must always stay available so an admin
-  pause can never become a fund freeze. Read-only views are likewise never
-  gated.
+  `increase_reward`, `extend_deadline`, and `stake_deposit` — these open new
+  escrow, reward, or keeper stake exposure. `extend_deadline` can keep escrow
+  locked in a contract the admin has declared unsafe if left open.
+- `pause`/`unpause` MUST NOT gate `cancel_task`, `expire_task`,
+  `withdraw_rewards`, `initiate_unbond`, or `withdraw_stake` — these only
+  let already-escrowed value flow back to whoever already owns it, which must
+  always stay available so an admin pause can never become a fund freeze.
+  `slash` is an admin action and is also not gated. Read-only views are likewise
+  never gated.
   See the `pause`/`unpause` doc comment in
   `contracts/keeper-registry/src/lib.rs` and the
   `test_pause_policy_matrix_entry_point_by_entry_point` test in
