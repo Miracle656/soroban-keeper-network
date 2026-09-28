@@ -280,6 +280,7 @@ pub mod fixture {
 
     use super::*;
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     /// A fixed set of events, served by ledger range.
     #[derive(Clone, Default)]
@@ -291,6 +292,11 @@ pub mod fixture {
         fail_at: Arc<Mutex<Option<u32>>>,
         /// Number of `get_events` calls served, for asserting page counts.
         calls: Arc<Mutex<usize>>,
+        /// How long the next `get_events` call sleeps before returning,
+        /// simulating a pass that is genuinely in flight -- e.g. to test that
+        /// a shutdown signal arriving mid-pass waits for it rather than
+        /// truncating it.
+        delay: Arc<Mutex<Option<Duration>>>,
     }
 
     impl FixtureSource {
@@ -300,12 +306,19 @@ pub mod fixture {
                 tip,
                 fail_at: Arc::new(Mutex::new(None)),
                 calls: Arc::new(Mutex::new(0)),
+                delay: Arc::new(Mutex::new(None)),
             }
         }
 
         /// Make the next request covering `ledger` fail once.
         pub fn fail_once_at(&self, ledger: u32) {
             *self.fail_at.lock().expect("fixture lock") = Some(ledger);
+        }
+
+        /// Make the next `get_events` call sleep for `delay` before
+        /// returning, once.
+        pub fn delay_next(&self, delay: Duration) {
+            *self.delay.lock().expect("fixture lock") = Some(delay);
         }
 
         pub fn call_count(&self) -> usize {
@@ -321,6 +334,11 @@ pub mod fixture {
             limit: u32,
         ) -> Result<EventPage> {
             *self.calls.lock().expect("fixture lock") += 1;
+
+            let delay = self.delay.lock().expect("fixture lock").take();
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
 
             let end = start_ledger.saturating_add(limit);
             {
