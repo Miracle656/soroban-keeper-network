@@ -1,37 +1,59 @@
 {
   "name": "@soroban-keeper-network/keeper-bot-v2",
-  "version": "0.1.0",
-  "description": "Operator-focused keeper service for the Soroban Keeper Network",
+  "version": "0.2.0",
+  "description": "Production-grade Soroban Keeper Network bot with persistent state, concurrency, and operator inspection",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "scripts": {
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc -p tsconfig.json",
-    "test": "npm run build && node --test \"dist/test/*.test.js\"",
-    "lint": "eslint .",
-    "check": "npm run build && npm test && npm run lint"
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./dist/cli.js",
+    "./inspect": "./dist/inspect.js",
+    "./config": "./dist/config.js"
   },
-  "engines": {
-    "node": ">=24 <25"
+  "bin": {
+    "keeper-bot": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src --max-warnings 0",
+    "lint:fix": "eslint src --fix",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@soroban-keeper-network/sdk": "file:../sdk-ts",
-    "@stellar/stellar-sdk": "^16.2.0",
-    "@prometheus-io/client": "^0.16.1"
+    "@soroban-keeper-network/sdk": "^0.2.0",
+    "@stellar/stellar-sdk": "^12.0.0",
+    "better-sqlite3": "^9.2.2",
+    "dotenv": "^16.4.5",
+    "ws": "^8.17.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.17.0",
-    "@types/node": "^24.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.19.0",
-    "@typescript-eslint/parser": "^8.19.0",
-    "eslint": "^9.17.0",
-    "globals": "^16.0.0",
-    "typescript": "^5.7.2"
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.11.5",
+    "@types/ws": "^8.5.10",
+    "@typescript-eslint/eslint-plugin": "^6.18.0",
+    "@typescript-eslint/parser": "^6.18.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
   },
-  "license": "Apache-2.0"
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "soroban",
+    "keeper",
+    "bot",
+    "automation",
+    "stellar"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stellar/soroban-keeper-network.git",
+    "directory": "packages/keeper-bot-v2"
+  }
 }

@@ -1,3 +1,9 @@
+module.exports = [
+  {
+    files: ["**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "commonjs",
 const tsParser = require("@typescript-eslint/parser");
 const tsPlugin = require("@typescript-eslint/eslint-plugin");
 
@@ -28,6 +34,19 @@ export default [
         console: "readonly",
         Buffer: "readonly",
         setTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+      },
+    },
+    rules: {
+      // Keep the ruleset small and non-negotiable rather than stylistic.
+      // v1's eslint.config.js comment says this best: a wall of style errors
+      // is not the welcome we want. The same philosophy applies here.
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-empty": ["error", { allowEmptyCatch: false }],
+      "no-undef": "error",
         clearTimeout: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
