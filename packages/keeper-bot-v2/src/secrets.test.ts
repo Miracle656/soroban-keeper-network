@@ -1,14 +1,19 @@
 /**
- * Tests for secret redaction utilities.
+ * Tests for secret redaction utilities and secret backend loaders.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   isSensitiveKey,
   redactConfig,
   appearsToBeSensitive,
   safeLogValue,
   createRedactedConfigDump,
+  loadSecretsFromEnv,
+  loadSecretsFromVault,
+  loadSecretsFromAws,
+  loadSecrets,
+  SecretLoadingError,
 } from './secrets.js';
 
 describe('Secret Redaction', () => {
@@ -203,6 +208,115 @@ describe('Secret Redaction', () => {
 
         // Should not contain obvious secret patterns
         expect(dumpStr).not.toMatch(/S[A-Z2-7]{55}/);
+      }
+    });
+  });
+});
+
+describe('Secret Backend Loaders', () => {
+  describe('loadSecretsFromEnv', () => {
+    it('loads from KEEPER_SECRET_KEY', async () => {
+      const result = await loadSecretsFromEnv({ backend: 'env' });
+      // When running tests, KEEPER_SECRET_KEY should be set in the environment
+      // This test will use whatever is in the environment, or skip if not available
+      expect(result.signingKeys).toBeDefined();
+      expect(result.backend).toBe('env');
+    });
+
+    it('throws when neither key is set', async () => {
+      const config = { backend: 'env' as const };
+      // Temporarily clear the environment variables
+      const originalKeeper = process.env.KEEPER_SECRET_KEY;
+      const originalPool = process.env.SIGNING_KEY_POOL;
+
+      try {
+        delete process.env.KEEPER_SECRET_KEY;
+        delete process.env.SIGNING_KEY_POOL;
+
+        await expect(loadSecretsFromEnv(config)).rejects.toThrow(SecretLoadingError);
+      } finally {
+        if (originalKeeper) process.env.KEEPER_SECRET_KEY = originalKeeper;
+        if (originalPool) process.env.SIGNING_KEY_POOL = originalPool;
+      }
+    });
+  });
+
+  describe('loadSecretsFromVault', () => {
+    it('throws with proper error when Vault is not configured', async () => {
+      const config = {
+        backend: 'vault' as const,
+        vaultAddr: '',
+      };
+
+      await expect(loadSecretsFromVault(config)).rejects.toThrow(SecretLoadingError);
+    });
+
+    it('error messages do not leak secrets', async () => {
+      const config = {
+        backend: 'vault' as const,
+        vaultAddr: 'http://vault:8200',
+        vaultToken: 'secret_token_should_not_appear',
+      };
+
+      try {
+        await loadSecretsFromVault(config);
+      } catch (error) {
+        // Error message should not contain the token
+        const message = error instanceof Error ? error.message : '';
+        expect(message).not.toContain('secret_token_should_not_appear');
+      }
+    });
+  });
+
+  describe('loadSecretsFromAws', () => {
+    it('throws with helpful error when AWS SDK not installed', async () => {
+      const config = {
+        backend: 'aws_secrets_manager' as const,
+        awsSecretName: 'my-secret',
+      };
+
+      // This will throw an error about AWS SDK not being installed
+      await expect(loadSecretsFromAws(config)).rejects.toThrow(SecretLoadingError);
+    });
+  });
+
+  describe('loadSecrets', () => {
+    it('routes to env backend', async () => {
+      const config = { backend: 'env' as const };
+      const result = await loadSecrets(config);
+      expect(result.signingKeys).toBeDefined();
+      expect(result.backend).toBe('env');
+    });
+
+    it('throws for unknown backend', async () => {
+      const config = { backend: 'unknown' as any };
+      await expect(loadSecrets(config)).rejects.toThrow();
+    });
+  });
+
+  describe('Secret error handling discipline', () => {
+    it('SecretLoadingError provides safe error messages', () => {
+      const error = new SecretLoadingError('Unable to fetch from vault', 'vault');
+      expect(error.message).toContain('vault');
+      expect(error.message).toContain('Unable to fetch');
+      expect(error.backend).toBe('vault');
+    });
+
+    it('error messages never log credential material', async () => {
+      const config = {
+        backend: 'vault' as const,
+        vaultAddr: 'http://vault:8200',
+        vaultToken: 'hvs.CAESIFakeTokenThatLooksRealShouldNotAppear12345',
+      };
+
+      try {
+        await loadSecretsFromVault(config);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        // Token should not appear in error message
+        expect(message).not.toMatch(/hvs\.[A-Za-z0-9]+/);
+        // But should indicate vault was involved
+        expect(message.toLowerCase()).toContain('vault');
       }
     });
   });

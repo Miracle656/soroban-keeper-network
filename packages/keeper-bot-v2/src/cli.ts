@@ -74,7 +74,7 @@ async function main(): Promise<void> {
           process.exit(1);
         }
 
-        const config = loadConfig();
+        const config = await loadConfig();
         const db = getDatabase(config.stateDbPath);
 
         try {
@@ -95,8 +95,8 @@ async function main(): Promise<void> {
     .description('Dump current configuration (with secrets redacted)')
     .action(async () => {
       try {
-        const config = loadConfig();
-        const keypair = Keypair.fromSecret(config.secretKey);
+        const config = await loadConfig();
+        const keypair = Keypair.fromSecret(config.signingKeys.split(',')[0].trim());
 
         const result = inspectConfig(config, keypair.publicKey());
         console.log(JSON.stringify(result, null, 2));
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
           process.exit(1);
         }
 
-        const config = loadConfig();
+        const config = await loadConfig();
         const db = getDatabase(config.stateDbPath);
 
         try {

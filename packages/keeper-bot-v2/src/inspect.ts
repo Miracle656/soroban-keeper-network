@@ -75,7 +75,7 @@ export interface InspectConfigResult {
   minProfitMarginStroops: string;
   stateDbPath: string;
   simulateExecution: boolean;
-  secretKey: string; // Will be redacted in output
+  signingKeys: string; // Will be redacted in output (comma-separated for multi-account)
   networkPassphrase: string;
   [key: string]: unknown;
 }
@@ -87,7 +87,7 @@ export interface InspectConfigResult {
  * This is useful for verifying that the bot is configured correctly.
  *
  * @param config - The bot configuration object
- * @param keeperAddress - The keeper's public address (derived from secret key)
+ * @param keeperAddress - The keeper's public address (derived from first signing key)
  * @returns Redacted configuration suitable for inspection
  */
 export function inspectConfig(
@@ -108,7 +108,7 @@ export function inspectConfig(
     minProfitMarginStroops: config.minProfitMarginStroops.toString(),
     stateDbPath: config.stateDbPath,
     simulateExecution: config.simulateExecution,
-    secretKey: config.secretKey, // Will be redacted
+    signingKeys: config.signingKeys, // Will be redacted
     networkPassphrase: config.networkPassphrase,
   };
 
