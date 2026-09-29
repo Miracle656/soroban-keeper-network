@@ -96,7 +96,7 @@ describe('Runtime Inspection Commands', () => {
       const config: BotConfig = {
         network: 'testnet',
         registryContractId: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4',
-        secretKey: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        signingKeys: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
         rpcUrl: 'https://soroban-testnet.stellar.org',
         networkPassphrase: 'Test SDF Network ; September 2015',
         once: false,
@@ -109,6 +109,8 @@ describe('Runtime Inspection Commands', () => {
         minProfitMarginStroops: 0n,
         stateDbPath: './keeper-state.db',
         simulateExecution: false,
+        indexerWsUrl: null,
+        indexerRestUrl: null,
       };
 
       const result = inspectConfig(config, 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
@@ -118,11 +120,11 @@ describe('Runtime Inspection Commands', () => {
       expect(result.keeperAddress).toBe('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
     });
 
-    it('redacts secret key', () => {
+    it('redacts signing keys', () => {
       const config: BotConfig = {
         network: 'testnet',
         registryContractId: 'C123...',
-        secretKey: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        signingKeys: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
         rpcUrl: 'https://soroban-testnet.stellar.org',
         networkPassphrase: 'Test SDF Network ; September 2015',
         once: false,
@@ -135,18 +137,20 @@ describe('Runtime Inspection Commands', () => {
         minProfitMarginStroops: 0n,
         stateDbPath: './keeper-state.db',
         simulateExecution: false,
+        indexerWsUrl: null,
+        indexerRestUrl: null,
       };
 
       const result = inspectConfig(config, 'G123...');
 
-      expect(result.secretKey).toBe('***REDACTED***');
+      expect(result.signingKeys).toBe('***REDACTED***');
     });
 
     it('includes numeric config values', () => {
       const config: BotConfig = {
         network: 'testnet',
         registryContractId: 'C123...',
-        secretKey: 'S...',
+        signingKeys: 'S...',
         rpcUrl: 'https://soroban-testnet.stellar.org',
         networkPassphrase: 'Test SDF Network ; September 2015',
         once: false,
@@ -159,6 +163,8 @@ describe('Runtime Inspection Commands', () => {
         minProfitMarginStroops: 100n,
         stateDbPath: './keeper-state.db',
         simulateExecution: false,
+        indexerWsUrl: null,
+        indexerRestUrl: null,
       };
 
       const result = inspectConfig(config, 'G123...');
@@ -173,7 +179,7 @@ describe('Runtime Inspection Commands', () => {
       const config: BotConfig = {
         network: 'testnet',
         registryContractId: 'C123...',
-        secretKey: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        signingKeys: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
         rpcUrl: 'https://soroban-testnet.stellar.org',
         networkPassphrase: 'Test SDF Network ; September 2015',
         once: false,
@@ -186,6 +192,8 @@ describe('Runtime Inspection Commands', () => {
         minProfitMarginStroops: 0n,
         stateDbPath: './keeper-state.db',
         simulateExecution: false,
+        indexerWsUrl: null,
+        indexerRestUrl: null,
       };
 
       const result = inspectConfig(config, 'G123...');
@@ -333,7 +341,7 @@ describe('Runtime Inspection Commands', () => {
         {
           network: 'testnet',
           registryContractId: 'C123...',
-          secretKey: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+          signingKeys: 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
           rpcUrl: 'https://example.com',
           networkPassphrase: 'test',
           once: false,
@@ -346,6 +354,8 @@ describe('Runtime Inspection Commands', () => {
           minProfitMarginStroops: 0n,
           stateDbPath: './test.db',
           simulateExecution: false,
+          indexerWsUrl: null,
+          indexerRestUrl: null,
         },
         'G123...',
       );
