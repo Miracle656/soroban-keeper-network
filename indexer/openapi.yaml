@@ -528,6 +528,23 @@ components:
             type: string
             enum:
             - upgraded
+      - type: object
+        required:
+        - keeper
+        - action
+        - score
+        - type
+        properties:
+          action:
+            type: string
+          keeper:
+            type: string
+          score:
+            type: string
+          type:
+            type: string
+            enum:
+            - reputation_updated
       description: |-
         The decoded payload of one event.
 
@@ -557,6 +574,7 @@ components:
       - fees_swept
       - initialized
       - upgraded
+      - reputation_updated
     HealthResponse:
       type: object
       description: Service liveness and how far ingestion has reached.
@@ -689,6 +707,7 @@ components:
       - keeper
       - executions
       - total_reward
+      - reputation
       properties:
         executions:
           type: integer
@@ -702,6 +721,9 @@ components:
           format: int32
           description: 1-based position after ordering and tie-breaking.
           minimum: 0
+        reputation:
+          type: string
+          description: Current reputation score.
         total_reward:
           type: string
           description: Net reward earned within the window.
@@ -711,6 +733,7 @@ components:
       enum:
       - executions
       - reward
+      - reputation
     TaskDetail:
       type: object
       description: A task's current state together with the events that produced it.
