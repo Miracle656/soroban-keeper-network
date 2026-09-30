@@ -295,10 +295,32 @@ export interface components {
             /** @description Whether the initial catch-up has finished. */
             backfill_complete: boolean;
             /**
+             * @description False once the lag exceeds the threshold: the difference between a
+             *     stalled indexer and a healthy but quiet one.
+             */
+            healthy: boolean;
+            /**
+             * Format: int32
+             * @description How many ledgers ingestion is behind the chain; absent until both
+             *     sides have been observed. Updated every ingestion cycle.
+             */
+            ingestion_lag_ledgers?: number | null;
+            /**
              * Format: int32
              * @description Highest ledger fully ingested, absent before the first checkpoint.
              */
             last_ingested_ledger?: number | null;
+            /**
+             * Format: int32
+             * @description Highest chain tip ingestion has observed, absent before its first
+             *     cycle (issue #359).
+             */
+            latest_known_ledger?: number | null;
+            /**
+             * Format: int32
+             * @description The lag threshold this deployment considers healthy.
+             */
+            max_healthy_lag_ledgers: number;
             status: string;
         };
         /**
