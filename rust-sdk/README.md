@@ -49,10 +49,26 @@ let policy = RetryPolicy {
 println!("{} @ {}", network.rpc_url(), network.network_passphrase());
 ```
 
-The transaction-building client itself (`register_task` and friends) is not
-yet published from this crate — track its progress in the repository's issue
-tracker. Once it lands, a minimal `register_task` example will replace this
-section, and full method documentation will live in rustdoc.
+* [`client::KeeperRegistryClient`](src/client.rs) — the network-facing client.
+  It owns the simulate, sign, submit flow once (`read` / `write`) and every
+  typed method (`get_task`, `get_fee_bps`, `is_paused`, `set_fee_bps`) is a
+  thin wrapper over it. Contract types (`Task`, `TaskType`, `TaskStatus`) and
+  errors (`KeeperError`, via `RegistryClientError::Contract`) are the
+  `keeper_registry` types themselves. The RPC layer is the `RpcTransport`
+  trait, because this crate bundles no HTTP client; implement it over your
+  Soroban RPC node, or over an in-process `Env` as
+  `tests/registry_client_tests.rs` does.
+
+```rust,ignore
+let client = KeeperRegistryClient::new(contract_id, rpc_url, passphrase, my_transport)
+    .with_signer(signer);
+let fee_bps = client.get_fee_bps().await?;
+client.set_fee_bps(fee_bps + 50).await?;
+```
+
+Contract rejections (`RegistryClientError::Contract`) are never retried;
+transport failures during simulation are retried per the `RetryPolicy`, and
+submission is never retried, since a lost response may mean it already landed.
 
 ## Further reading
 
