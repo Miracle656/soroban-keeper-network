@@ -12,7 +12,7 @@
 use crate::client::ClientError;
 use crate::signing::TransactionSigner;
 use soroban_sdk::{Address, Env, Vec};
-pub use keeper_treasury::Recipient;
+pub use treasury::Recipient;
 
 fn alloc_format_error<E: core::fmt::Debug>(err: E) -> String {
     format!("{err:?}")
@@ -34,8 +34,8 @@ impl<'a, S: TransactionSigner> TreasuryClient<'a, S> {
         }
     }
 
-    fn raw(&self) -> keeper_treasury::TreasuryClient<'_> {
-        keeper_treasury::TreasuryClient::new(self.env, &self.contract_id)
+    fn raw(&self) -> treasury::TreasuryClient<'_> {
+        treasury::TreasuryClient::new(self.env, &self.contract_id)
     }
 
     /// Initialize the contract with an admin address and reward token.
