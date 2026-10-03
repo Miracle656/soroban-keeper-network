@@ -1,8 +1,13 @@
 //! High-level typed client for the Keeper Registry Soroban contract (Issues #333, #334, #340).
 
+use crate::retry::{default_classify, ErrorClass, RetryPolicy, RpcCallError, TransportError};
 use crate::signing::TransactionSigner;
 pub use crate::types::{BatchTaskParams, PendingCredit, SlashRecord, Task, UnbondRequest};
-use soroban_sdk::{Address, Env, Symbol, Vec};
+use keeper_registry::KeeperError;
+use soroban_sdk::xdr::ScVal;
+use soroban_sdk::{Address, Env, Symbol, TryFromVal, Val, Vec};
+use std::future::Future;
+use std::time::Duration;
 
 /// High-level client wrapping all contract interactions for integrators and keepers.
 pub struct KeeperClient<'a, S: TransactionSigner> {
@@ -304,4 +309,267 @@ pub enum ClientError {
 
 fn alloc_format_error<E: core::fmt::Debug>(err: E) -> String {
     format!("{err:?}")
+}
+
+// ── Issue #267: RPC-backed KeeperRegistryClient ──────────────────────────────
+//
+// `KeeperClient` above drives the contract in-process through a soroban
+// `Env` (tests, contract-to-contract). `KeeperRegistryClient` is the
+// network-facing counterpart: it owns the build -> simulate -> sign -> submit
+// flow once (`read` / `write`) and every typed method is a thin wrapper over
+// it. Contract shapes (`Task`, `TaskType`, `TaskStatus`, `KeeperError`) are
+// the `keeper_registry` types themselves; nothing is redefined here.
+
+/// A contract invocation, handed to an [`RpcTransport`] to simulate or submit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InvocationRequest {
+    /// Strkey contract id (`C...`) of the keeper registry.
+    pub contract_id: String,
+    /// Contract function name.
+    pub function: String,
+    /// Positional arguments, already encoded as `ScVal`.
+    pub args: std::vec::Vec<ScVal>,
+    /// Network passphrase the transport must use when building the envelope.
+    pub network_passphrase: String,
+}
+
+/// What a simulation returns: the call's decoded return value plus the
+/// transaction the transport assembled (footprint, resource fee, auth
+/// entries) that a mutating call must sign.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimulationOutcome {
+    pub return_value: ScVal,
+    /// Bytes handed to [`TransactionSigner::sign_payload`]. Building the
+    /// envelope and the network-id-prefixed signature payload is the
+    /// transport's job, since only it talks to the RPC node.
+    pub transaction: std::vec::Vec<u8>,
+}
+
+/// A simulated transaction plus the signer's signature over it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SignedTransaction {
+    pub request: InvocationRequest,
+    pub transaction: std::vec::Vec<u8>,
+    pub signature: std::vec::Vec<u8>,
+}
+
+/// The RPC layer `KeeperRegistryClient` runs on. Implement it over a Soroban
+/// RPC node (the crate does not bundle an HTTP client; see the README), or
+/// over an in-process `Env` for tests.
+///
+/// Failures use [`RpcCallError`]: `Transport` when the call never ran the
+/// contract (retried per the client's [`RetryPolicy`]), `Contract(code)` when
+/// the contract returned a `#[contracterror]` code, which the client decodes
+/// into [`KeeperError`] and never retries.
+pub trait RpcTransport {
+    fn simulate(
+        &self,
+        request: &InvocationRequest,
+    ) -> impl Future<Output = Result<SimulationOutcome, RpcCallError<u32>>> + Send;
+
+    fn submit(
+        &self,
+        signed: &SignedTransaction,
+    ) -> impl Future<Output = Result<ScVal, RpcCallError<u32>>> + Send;
+
+    /// Backoff sleep between retried simulations. The crate bundles no async
+    /// runtime, so the default blocks the thread; override it with your
+    /// runtime's timer (e.g. `tokio::time::sleep`).
+    fn sleep(&self, duration: Duration) -> impl Future<Output = ()> + Send {
+        async move { std::thread::sleep(duration) }
+    }
+}
+
+/// Errors from [`KeeperRegistryClient`].
+///
+/// `Contract` is actionable and usually expected (the contract rejected the
+/// call: do not retry). `Transport` means the network failed before the
+/// contract ran (usually worth retrying; the client already did per its
+/// policy). `Decode` means a response arrived but was not the expected shape.
+#[derive(Debug, thiserror::Error)]
+pub enum RegistryClientError {
+    #[error("contract rejected the call: {0:?}")]
+    Contract(KeeperError),
+    #[error("contract returned unknown error code {0}")]
+    UnknownContractError(u32),
+    #[error("RPC transport failure: {0:?}")]
+    Transport(TransportError),
+    #[error("could not decode response: {0}")]
+    Decode(String),
+    #[error("no signer configured; call `with_signer` before a mutating call")]
+    NoSigner,
+    #[error("signing failed: {0}")]
+    Signing(#[from] crate::signing::SignerError),
+}
+
+impl From<RpcCallError<u32>> for RegistryClientError {
+    fn from(err: RpcCallError<u32>) -> Self {
+        match err {
+            RpcCallError::Transport(t) => Self::Transport(t),
+            RpcCallError::Contract(code) => {
+                match KeeperError::try_from(soroban_sdk::Error::from_contract_error(code)) {
+                    Ok(e) => Self::Contract(e),
+                    Err(_) => Self::UnknownContractError(code),
+                }
+            }
+        }
+    }
+}
+
+/// Network-facing client for the keeper registry contract.
+pub struct KeeperRegistryClient<T: RpcTransport> {
+    contract_id: String,
+    rpc_url: String,
+    network_passphrase: String,
+    transport: T,
+    retry: RetryPolicy,
+    signer: Option<Box<dyn TransactionSigner>>,
+    // Only used to decode returned values into contract types.
+    env: Env,
+}
+
+impl<T: RpcTransport> KeeperRegistryClient<T> {
+    /// `contract_id`, `rpc_url` and `network_passphrase` identify the
+    /// deployment; `transport` performs the RPC calls against `rpc_url`.
+    pub fn new(
+        contract_id: impl Into<String>,
+        rpc_url: impl Into<String>,
+        network_passphrase: impl Into<String>,
+        transport: T,
+    ) -> Self {
+        Self {
+            contract_id: contract_id.into(),
+            rpc_url: rpc_url.into(),
+            network_passphrase: network_passphrase.into(),
+            transport,
+            retry: RetryPolicy::default(),
+            signer: None,
+            env: Env::default(),
+        }
+    }
+
+    /// Signer used by mutating calls; also the `admin` / `owner` / `keeper`
+    /// argument the typed write methods pass.
+    pub fn with_signer(mut self, signer: impl TransactionSigner + 'static) -> Self {
+        self.signer = Some(Box::new(signer));
+        self
+    }
+
+    /// Overrides the default retry policy (applied to simulation; submission
+    /// is never retried, since a lost response may mean it already landed).
+    pub fn with_retry_policy(mut self, retry: RetryPolicy) -> Self {
+        self.retry = retry;
+        self
+    }
+
+    pub fn contract_id(&self) -> &str {
+        &self.contract_id
+    }
+
+    pub fn rpc_url(&self) -> &str {
+        &self.rpc_url
+    }
+
+    pub fn network_passphrase(&self) -> &str {
+        &self.network_passphrase
+    }
+
+    fn request(&self, function: &str, args: std::vec::Vec<ScVal>) -> InvocationRequest {
+        InvocationRequest {
+            contract_id: self.contract_id.clone(),
+            function: function.to_string(),
+            args,
+            network_passphrase: self.network_passphrase.clone(),
+        }
+    }
+
+    fn decode<R: TryFromVal<Env, Val>>(&self, value: &ScVal) -> Result<R, RegistryClientError> {
+        let val = Val::try_from_val(&self.env, value)
+            .map_err(|e| RegistryClientError::Decode(format!("{e:?}")))?;
+        R::try_from_val(&self.env, &val)
+            .map_err(|_| RegistryClientError::Decode(format!("unexpected value {value:?}")))
+    }
+
+    async fn simulate(
+        &self,
+        request: &InvocationRequest,
+    ) -> Result<SimulationOutcome, RegistryClientError> {
+        // Same policy and classifier as `RetryPolicy::run`, written out here
+        // because `run` needs `'static` futures and a transport future
+        // borrows the client.
+        let mut attempt = 0;
+        loop {
+            match self.transport.simulate(request).await {
+                Ok(outcome) => return Ok(outcome),
+                Err(err) => {
+                    let last = attempt + 1 >= self.retry.max_attempts;
+                    if matches!(default_classify(&err), ErrorClass::Permanent) || last {
+                        return Err(err.into());
+                    }
+                    self.transport.sleep(self.retry.delay_for(attempt)).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
+    /// Shared read plumbing: simulate only, decode the return value.
+    pub async fn read<R: TryFromVal<Env, Val>>(
+        &self,
+        function: &str,
+        args: std::vec::Vec<ScVal>,
+    ) -> Result<R, RegistryClientError> {
+        let outcome = self.simulate(&self.request(function, args)).await?;
+        self.decode(&outcome.return_value)
+    }
+
+    /// Shared mutating plumbing: simulate, sign the assembled transaction
+    /// with the configured signer, submit, decode the result.
+    pub async fn write<R: TryFromVal<Env, Val>>(
+        &self,
+        function: &str,
+        args: std::vec::Vec<ScVal>,
+    ) -> Result<R, RegistryClientError> {
+        let signer = self.signer.as_ref().ok_or(RegistryClientError::NoSigner)?;
+        let request = self.request(function, args);
+        let outcome = self.simulate(&request).await?;
+        let signature = signer.sign_payload(&outcome.transaction)?;
+        let signed = SignedTransaction {
+            request,
+            transaction: outcome.transaction,
+            signature: signature.iter().collect(),
+        };
+        let result = self.transport.submit(&signed).await?;
+        self.decode(&result)
+    }
+
+    fn signer_arg(&self) -> Result<ScVal, RegistryClientError> {
+        let signer = self.signer.as_ref().ok_or(RegistryClientError::NoSigner)?;
+        Ok(ScVal::from(signer.address()))
+    }
+
+    // ── typed methods (thin wrappers over `read` / `write`) ──
+
+    /// Fetches a task. `Task` carries `TaskType` and `TaskStatus` from the
+    /// contract crate directly.
+    pub async fn get_task(&self, task_id: u64) -> Result<Task, RegistryClientError> {
+        self.read("get_task", vec![ScVal::U64(task_id)]).await
+    }
+
+    /// Platform fee in basis points.
+    pub async fn get_fee_bps(&self) -> Result<u32, RegistryClientError> {
+        self.read("get_fee_bps", vec![]).await
+    }
+
+    /// Whether the contract is paused.
+    pub async fn is_paused(&self) -> Result<bool, RegistryClientError> {
+        self.read("is_paused", vec![]).await
+    }
+
+    /// Admin-only: updates the platform fee. Signed by the configured signer.
+    pub async fn set_fee_bps(&self, new_bps: u32) -> Result<(), RegistryClientError> {
+        let admin = self.signer_arg()?;
+        self.write("set_fee_bps", vec![admin, ScVal::U32(new_bps)])
+            .await
+    }
 }

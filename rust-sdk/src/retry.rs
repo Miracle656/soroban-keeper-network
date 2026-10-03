@@ -110,7 +110,7 @@ impl RetryPolicy {
         }
     }
 
-    fn delay_for(&self, attempt: u32) -> Duration {
+    pub(crate) fn delay_for(&self, attempt: u32) -> Duration {
         let backoff = self.base_delay.saturating_mul(1u32 << attempt.min(31));
         let jitter = if self.jitter_max > self.jitter_min {
             let range = (self.jitter_max - self.jitter_min).as_nanos().max(1);
