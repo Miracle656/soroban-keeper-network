@@ -2887,11 +2887,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "keeper-registry",
+ "keeper-treasury",
  "rand 0.8.7",
  "soroban-sdk",
  "thiserror 2.0.20",
  "tokio",
- "treasury",
 ]
 
 [[package]]
@@ -3646,14 +3646,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "treasury"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "soroban-sdk",
 ]
 
 [[package]]

@@ -13,6 +13,10 @@
     "./treasury": {
       "types": "./dist/treasury/index.d.ts",
       "import": "./dist/treasury/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
     }
   },
   "files": [
