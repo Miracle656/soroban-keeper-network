@@ -12,7 +12,10 @@ pub mod signing;
 pub mod treasury_client;
 pub mod types;
 
-pub use client::{ClientError, KeeperClient};
+pub use client::{
+    ClientError, InvocationRequest, KeeperClient, KeeperRegistryClient, RegistryClientError,
+    RpcTransport, SignedTransaction, SimulationOutcome,
+};
 pub use cross_contract::{CrossContractInvocation, KeeperRegistryCrossContract};
 pub use events::{
     EventDecodeError, FeesSweptEvent, InitializedEvent, KeeperEvent, PausedEvent,
