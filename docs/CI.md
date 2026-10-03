@@ -9,7 +9,7 @@ without blocking your PR.
 |-----|------|-----|
 | `format` | Required | `cargo fmt --all -- --check` — a formatting diff is trivially fixable and shouldn't need discussion. |
 | `test` | Required | `cargo test --workspace --locked` — the test suite is the correctness bar. |
-| `build-wasm` | Required | The contract must actually compile to the `wasm32-unknown-unknown` target it deploys to. |
+| `build-wasm` | Required | The `keeper-registry` and `treasury` contracts must actually compile to the `wasm32-unknown-unknown` target they deploy to. |
 | `sdk-ts` | Required | The TypeScript SDK (`packages/sdk-ts`) must build, pass its own test suite, and lint clean. Uploads its built `dist/` as an artifact for `bot` to consume. |
 | `bot` | Required | The example keeper bot (`examples/keeper-bot`) must lint, syntax-check, and pass its own test suite. Depends on `sdk-ts`'s built output (the bot's `@soroban-keeper-network/sdk` dependency is a local `file:` reference, which `npm install` copies as-is rather than building). |
 | `bot-v2` | Required | The production keeper bot v2 (`examples/keeper-bot-v2`) must build, lint, and pass its test suite against an ephemeral Postgres service container. See [The keeper-bot-v2 job](#the-keeper-bot-v2-job). |

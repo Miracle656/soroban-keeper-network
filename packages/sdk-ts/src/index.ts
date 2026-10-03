@@ -91,12 +91,14 @@ export {
   tryWithdrawRewards,
   withdrawRewards,
   type WithdrawRewardsParams,
+  type WithdrawRewardsOutcome,
 } from "./methods/withdrawRewards.js";
 export { extendDeadline, type ExtendDeadlineParams } from "./methods/extendDeadline.js";
 export {
   executeTask,
   toProofBytes,
   type ExecuteTaskParams,
+  type ExecuteTaskOutcome,
   type ProofInput,
 } from "./methods/executeTask.js";
 export { registerTask, type RegisterTaskParams } from "./methods/registerTask.js";
@@ -112,6 +114,35 @@ export {
   type CancelTaskParams,
 } from "./methods/cancelTask.js";
 export { expireTask, type ExpireTaskParams } from "./methods/expireTask.js";
+export {
+  stakeDeposit,
+  initiateUnbond,
+  withdrawStake,
+  slash,
+  setMinStake,
+  raiseSlashAppeal,
+  resolveSlashAppeal,
+  setDisputeWindow,
+  disputeExecution,
+  resolveExecutionDispute,
+  keeperStake,
+  pendingUnbond,
+  minStake,
+  getSlash,
+  slashHistory,
+  disputeWindow,
+  pendingReward,
+  type StakeDepositParams,
+  type InitiateUnbondParams,
+  type WithdrawStakeParams,
+  type SlashParams,
+  type SetMinStakeParams,
+  type RaiseSlashAppealParams,
+  type ResolveSlashAppealParams,
+  type SetDisputeWindowParams,
+  type DisputeExecutionParams,
+  type ResolveExecutionDisputeParams,
+} from "./methods/staking.js";
 export {
   MAX_CALLDATA_LEN,
   MAX_LOCK_LEDGERS,
@@ -130,7 +161,14 @@ export {
   type ExternalSigner,
   type UnsignedTransaction,
 } from "./transactionBuilder.js";
-export { TaskStatus, TaskType, type Task } from "./types.js";
+export {
+  TaskStatus,
+  TaskType,
+  type Task,
+  type PendingCredit,
+  type SlashRecord,
+  type UnbondRequest,
+} from "./types.js";
 export {
   NETWORK_PRESETS,
   NETWORK_NAMES,
@@ -139,6 +177,33 @@ export {
 export type { NetworkName, NetworkPreset } from "./network.js";
 export { withRetry } from "./retry.js";
 export type { RetryOptions } from "./retry.js";
+export {
+  evaluateProfitability,
+  logProfitabilityDecision,
+  DEFAULT_PROFITABILITY_OPTIONS,
+  type OperationCostEstimate,
+  type ProfitabilityOptions,
+  type ProfitabilityResult,
+} from "./profitability.js";
+export {
+  LogEventType,
+  consoleLogger,
+  noOpLogger,
+  logError,
+  logInfo,
+  logOperationOutcome,
+  logProfitabilityEvaluation,
+  logSimulationFailed,
+  logSimulationStarted,
+  logSimulationSucceeded,
+  type ErrorLogEvent,
+  type InfoLogEvent,
+  type LogEvent,
+  type Logger,
+  type OperationOutcomeLogEvent,
+  type ProfitabilityLogEvent,
+  type SimulationLogEvent,
+} from "./logging.js";
 
 /**
  * The treasury contract's typed client (`contracts/treasury`), namespaced

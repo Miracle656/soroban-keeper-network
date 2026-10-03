@@ -21,6 +21,7 @@
 | [Architecture](docs/ARCHITECTURE.md) | Components, task lifecycle, storage, money invariants, trust model |
 | [Fuzzing & property testing](docs/FUZZING.md) | Running/adding fuzz targets, the shared invariant module, crash-to-regression convention |
 | [Verifier design (E04)](docs/VERIFIER_DESIGN.md) | `IKeeperVerifier` interface for optional on-chain proof verification |
+| [Reputation design (E07)](docs/REPUTATION_DESIGN.md) | On-chain keeper reputation scoring architecture and epic retrospective |
 | [Indexer design](docs/INDEXER_DESIGN.md) | One instance per deployment, event-shape versioning policy |
 | [Indexer deployment](docs/INDEXER_DEPLOYMENT.md) | Provisioning, backfill, and operating an indexer instance |
 | [Batch operations (E05)](docs/BATCH_OPERATIONS.md) | Proposed `batch_register_tasks` design + integration guide |
@@ -263,14 +264,15 @@ A **shared, permissionless, on-chain coordination layer** where:
 
 #### FR-7: Admin Controls
 - `pause`/`unpause` MUST gate `register_task`, `claim_task`, `execute_task`,
-  `increase_reward`, and `extend_deadline` — the first four open new escrow
-  or reward exposure, and `extend_deadline` can keep escrow locked in a
-  contract the admin has declared unsafe if left open.
-- `pause`/`unpause` MUST NOT gate `cancel_task`, `expire_task`, or
-  `withdraw_rewards` — these only let already-escrowed value flow back to
-  whoever already owns it, which must always stay available so an admin
-  pause can never become a fund freeze. Read-only views are likewise never
-  gated.
+  `increase_reward`, `extend_deadline`, and `stake_deposit` — these open new
+  escrow, reward, or keeper stake exposure. `extend_deadline` can keep escrow
+  locked in a contract the admin has declared unsafe if left open.
+- `pause`/`unpause` MUST NOT gate `cancel_task`, `expire_task`,
+  `withdraw_rewards`, `initiate_unbond`, or `withdraw_stake` — these only
+  let already-escrowed value flow back to whoever already owns it, which must
+  always stay available so an admin pause can never become a fund freeze.
+  `slash` is an admin action and is also not gated. Read-only views are likewise
+  never gated.
   See the `pause`/`unpause` doc comment in
   `contracts/keeper-registry/src/lib.rs` and the
   `test_pause_policy_matrix_entry_point_by_entry_point` test in
@@ -376,6 +378,20 @@ value from the `max_batch_size()` view instead of hardcoding it.
 - `count == 0` and an empty `ids` MUST return an empty vector, not an error.
 - Duplicate ids are permitted and each is resolved independently.
 - Both are read-only views and are therefore never gated by `pause`.
+
+#### FR-9: Keeper Reputation Tracking
+- `execute_task` MUST increment the claiming keeper's reputation record upon successful execution (`successful_executions` incremented).
+- Re-claiming a task after `lock_ledgers` has elapsed MUST record a missed lock window against the prior claimer (`missed_locks` incremented).
+- A keeper's reputation record MUST be created upon their first tracked action and updated incrementally.
+- Reputation MUST decay lazily at read time based on ledgers elapsed since the last update ledger; querying reputation via `keeper_reputation` MUST NOT mutate state and MUST NOT bump TTL.
+- Querying reputation for an address with no recorded history MUST return a zero-initialized default record rather than erroring.
+- MUST emit `("reputation", "update")` event carrying `(keeper, action, new_score)` on state-mutating updates.
+
+#### FR-10: Claim Eligibility Floor
+- When the eligibility floor (`min_reputation`) is configured to a non-zero value, `claim_task` MUST reject callers whose decayed reputation is strictly below `min_reputation` with `KeeperError::ReputationTooLow`.
+- `min_reputation` MUST default to `0` (disabled), ensuring existing and new keepers are not gated by default.
+- `set_min_reputation` MUST only be callable by the `Admin`.
+- `min_reputation` MUST NOT gate task registration, task execution, cancellation, expiry, or reward withdrawal.
 
 ---
 
@@ -500,6 +516,10 @@ without breaking existing consumers.
 | `MinStakeUpdated` | `set_min_stake` | `("minstk", "admin")` | `(old_min: i128, new_min: i128)` |
 | `SlashAppealRaised` | `raise_slash_appeal` | `("appeal", "stake")` | `(slash_id: u64, keeper: Address)` |
 | `SlashAppealResolved` | `resolve_slash_appeal` | `("resolve", "stake")` | `(slash_id: u64, upheld: bool)` |
+| `DisputeWindowUpdated` | `set_dispute_window` | `("disptwin", "admin")` | `(old_ledgers: u32, new_ledgers: u32)` |
+| `ExecutionDisputed` | `dispute_execution` | `("exdisp", "task")` | `(task_id: u64, keeper: Address)` |
+| `ExecutionDisputeResolved` | `resolve_execution_dispute` | `("exresolv", "task")` | `(task_id: u64, upheld: bool)` |
+| `RewardsFinalized` | `withdraw_rewards` | `("finalize", "reward")` | `(keeper: Address, task_id: u64, amount: i128)` — emitted once per pending credit that finalizes into the keeper's withdrawable balance |
 
 Notes:
 
@@ -511,6 +531,7 @@ Notes:
 - `VerifierAttached` is emitted on `register_task` when an optional verifier is attached, preserving the standard 4-tuple schema of `TaskRegistered` for backwards compatibility with existing event parsers.
 - `VerifierUpdated` follows the `FeeUpdated` / `MinRewardUpdated` before/after pattern with `(task_id, old_verifier, new_verifier)`.
 - `StakeDeposited`/`UnbondInitiated`/`StakeWithdrawn`/`Slashed`/`MinStakeUpdated`/`SlashAppealRaised`/`SlashAppealResolved` are the staking epic's events (E06, `docs/STAKING_DESIGN.md`). `Slashed`'s `reason` is a `Symbol`, not free text — see the design doc for the trust model behind `slash`'s authorization.
+- `DisputeWindowUpdated`/`ExecutionDisputed`/`ExecutionDisputeResolved`/`RewardsFinalized` cover the optional execution-dispute hold (E06, `docs/STAKING_DESIGN.md` §4.2). `RewardsFinalized` only fires for credits that actually go through a dispute-window hold; when the window is disabled (the default), `withdraw_rewards` behaves exactly as it did before this feature existed and this event is never emitted.
 
 #### Task Lifecycle State Machine
 
