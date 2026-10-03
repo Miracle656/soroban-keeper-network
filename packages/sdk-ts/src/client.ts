@@ -28,9 +28,9 @@ import type { IntegerInput } from "./core/scval.js";
 import type { Task } from "./types.js";
 import type { ContractCompatibility, VersionOptions } from "./methods/views.js";
 import * as views from "./methods/views.js";
-import type { WithdrawRewardsParams } from "./methods/withdrawRewards.js";
+import type { WithdrawRewardsOutcome, WithdrawRewardsParams } from "./methods/withdrawRewards.js";
 import { tryWithdrawRewards, withdrawRewards } from "./methods/withdrawRewards.js";
-import type { ExecuteTaskParams } from "./methods/executeTask.js";
+import type { ExecuteTaskOutcome, ExecuteTaskParams } from "./methods/executeTask.js";
 import type { AuthEntrySigner } from "./core/auth.js";
 import { signAuthEntries } from "./core/auth.js";
 import { executeTask } from "./methods/executeTask.js";
@@ -312,7 +312,7 @@ export class KeeperRegistryClient implements ContractCaller {
   }
 
   /** See {@link withdrawRewards}. */
-  withdrawRewards(params: WithdrawRewardsParams): Promise<bigint> {
+  withdrawRewards(params: WithdrawRewardsParams): Promise<WithdrawRewardsOutcome> {
     return withdrawRewards(this, params);
   }
 
@@ -322,7 +322,7 @@ export class KeeperRegistryClient implements ContractCaller {
   }
 
   /** See {@link executeTask}. */
-  executeTask(params: ExecuteTaskParams): Promise<void> {
+  executeTask(params: ExecuteTaskParams): Promise<ExecuteTaskOutcome> {
     return executeTask(this, params);
   }
 
